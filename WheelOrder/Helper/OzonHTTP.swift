@@ -6,6 +6,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 final class OzonHTTP {
     private let base = URL(string: "https://api-seller.ozon.ru")!
