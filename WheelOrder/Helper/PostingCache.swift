@@ -15,8 +15,10 @@ final class PostingCache {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
+    
+    static let shared: PostingCache = .init()
 
-    init(filename: String = "processed_postings.json") {
+    private init(filename: String = "processed_postings.json") {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         self.url = cwd.appendingPathComponent(filename)
         load()

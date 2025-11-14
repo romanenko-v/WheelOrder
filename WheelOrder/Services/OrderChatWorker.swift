@@ -77,13 +77,14 @@ private extension OrderChatWorker {
 
         do {
             let chatId = try await createOrGetChatId(for: pn)
-            let messages = try await fetchChatMessages(chatId: chatId)
-
-            if messages.isEmpty {
-                await handleNoMessages(postingNumber: pn, chatId: chatId)
-            } else {
-                await handleExistingMessages(postingNumber: pn, messageCount: messages.count)
-            }
+            await handleNoMessages(postingNumber: pn, chatId: chatId)
+//            let messages = try await fetchChatMessages(chatId: chatId)
+//
+//            if messages.isEmpty {
+//                await handleNoMessages(postingNumber: pn, chatId: chatId)
+//            } else {
+//                await handleExistingMessages(postingNumber: pn, messageCount: messages.count)
+//            }
         } catch {
             log("  \(pn): failed to process posting (\(error))")
         }

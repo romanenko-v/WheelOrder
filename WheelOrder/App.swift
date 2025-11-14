@@ -18,7 +18,7 @@ struct App {
         disableStdIOBuffering()
 
         let api = OzonSellerAPI(clientId: Config.OZON_CLIENT_ID, apiKey: Config.OZON_API_KEY)
-        let cache = PostingCache()
+        let cache = PostingCache.shared
         // cache.clear()
 
         let worker = OrderChatWorker(api: api,
