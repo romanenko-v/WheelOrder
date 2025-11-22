@@ -14,20 +14,17 @@ final class OrderChatWorker {
     private let loopIntervalSec: UInt64
     private let settings: SettingsStore
     private let throttleNs: UInt64 = 200_000_000
-    private let externalLogSink: (String) -> Void
 
     init(api: OzonSellerAPI,
          cache: PostingCache,
          windowHours: Int = 5,
          loopIntervalSec: UInt64 = 60,
-         settings: SettingsStore,
-         logSink: @escaping (String) -> Void = { _ in }) {
+         settings: SettingsStore) {
         self.api = api
         self.cache = cache
         self.windowHours = windowHours
         self.loopIntervalSec = loopIntervalSec
         self.settings = settings
-        self.externalLogSink = logSink
     }
 
     func runForever() async {
@@ -128,6 +125,5 @@ private extension OrderChatWorker {
     func log(_ message: String) {
         let line = "[\(Date())] \(message)"
         print(line)
-        externalLogSink(line)
     }
 }

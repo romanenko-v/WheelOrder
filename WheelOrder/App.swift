@@ -35,10 +35,7 @@ struct App {
             cache: cache,
             windowHours: 3,
             loopIntervalSec: 60,
-            settings: settings,
-            logSink: { text in
-                print(text)
-            }
+            settings: settings
         )
 
         async let workerLoop: () = worker.runForever()
