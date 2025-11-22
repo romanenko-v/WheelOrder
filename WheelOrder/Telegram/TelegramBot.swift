@@ -331,10 +331,10 @@ final class TelegramBot {
         Настройки сообщений:
 
         • Стартовое сообщение — \(s.sendMessages ? "включено ✅" : "выключено ❌")
-        \(preview(s.messageTemplate))
+        \(s.messageTemplate)
 
         • Второе сообщение — \(s.sendSecondMessage ? "включено ✅" : "выключено ❌")
-        \(preview(s.secondMessageTemplate))
+        \(s.secondMessageTemplate)
         """
 
         let markup = TGInlineKeyboardMarkup(inline_keyboard: [
