@@ -12,19 +12,22 @@ final class OrderChatWorker {
     private let cache: PostingCache
     private let windowHours: Int
     private let loopIntervalSec: UInt64
-    private let sendMessages: Bool
+    private let settings: SettingsStore
     private let throttleNs: UInt64 = 200_000_000
+    private let externalLogSink: (String) -> Void
 
     init(api: OzonSellerAPI,
          cache: PostingCache,
          windowHours: Int = 5,
          loopIntervalSec: UInt64 = 60,
-         sendMessages: Bool = true) {
+         settings: SettingsStore,
+         logSink: @escaping (String) -> Void = { _ in }) {
         self.api = api
         self.cache = cache
         self.windowHours = windowHours
         self.loopIntervalSec = loopIntervalSec
-        self.sendMessages = sendMessages
+        self.settings = settings
+        self.externalLogSink = logSink
     }
 
     func runForever() async {
@@ -78,13 +81,6 @@ private extension OrderChatWorker {
         do {
             let chatId = try await createOrGetChatId(for: pn)
             await handleNoMessages(postingNumber: pn, chatId: chatId)
-//            let messages = try await fetchChatMessages(chatId: chatId)
-//
-//            if messages.isEmpty {
-//                await handleNoMessages(postingNumber: pn, chatId: chatId)
-//            } else {
-//                await handleExistingMessages(postingNumber: pn, messageCount: messages.count)
-//            }
         } catch {
             log("  \(pn): failed to process posting (\(error))")
         }
@@ -104,9 +100,15 @@ private extension OrderChatWorker {
     }
 
     func handleNoMessages(postingNumber: String, chatId: String) async {
-        if sendMessages {
+        let cfg = await settings.snapshot()
+
+        if cfg.sendMessages {
             do {
-                try await api.sendMessage(chatId: chatId, text: Config.makePostingMessage(postingNumber: postingNumber))
+                let text = Config.makePostingMessage(
+                    postingNumber: postingNumber,
+                    messageText: cfg.messageTemplate
+                )
+                try await api.sendMessage(chatId: chatId, text: text)
                 log("  \(postingNumber): sent initial message to chat \(chatId)")
                 cache.insert(postingNumber)
             } catch {
@@ -124,6 +126,8 @@ private extension OrderChatWorker {
     }
 
     func log(_ message: String) {
-        print("[\(Date())] \(message)")
+        let line = "[\(Date())] \(message)"
+        print(line)
+        externalLogSink(line)
     }
 }

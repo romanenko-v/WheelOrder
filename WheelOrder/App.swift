@@ -17,16 +17,32 @@ struct App {
     static func main() async {
         disableStdIOBuffering()
 
-        let api = OzonSellerAPI(clientId: Config.OZON_CLIENT_ID, apiKey: Config.OZON_API_KEY)
+        let api = OzonSellerAPI(
+            clientId: Config.OZON_CLIENT_ID,
+            apiKey: Config.OZON_API_KEY
+        )
+
         let cache = PostingCache.shared
-        // cache.clear()
+        let settings = SettingsStore.shared
 
-        let worker = OrderChatWorker(api: api,
-                                     cache: cache,
-                                     windowHours: 3,
-                                     loopIntervalSec: 60,
-                                     sendMessages: true)
+        let botToken = Config.TELEGRAM_BOT_TOKEN
+        let bot = TelegramBot(token: botToken, settings: settings)
 
-        await worker.runForever()
+        await GlobalLogger.shared.configure(bot: bot)
+
+        let worker = OrderChatWorker(
+            api: api,
+            cache: cache,
+            windowHours: 3,
+            loopIntervalSec: 60,
+            settings: settings,
+            logSink: { text in
+                print(text)
+            }
+        )
+
+        async let workerLoop: () = worker.runForever()
+        async let botLoop: () = bot.runForever()
+        _ = await (workerLoop, botLoop)
     }
 }
