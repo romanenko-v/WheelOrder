@@ -2,7 +2,7 @@
 //  TelegramBot.swift
 //  WheelOrder
 //
-//  Created by Вячеслав on 22.11.2025.
+//  Created by Vyacheslav on 22.11.2025.
 //
 
 import Foundation
@@ -19,14 +19,18 @@ final class TelegramBot {
 
     private enum ChatState {
         case idle
-        case waitingNewMessage
-        case confirmNewMessage(String)
+
+        case waitingNewMessage1
+        case confirmNewMessage1(String)
+
+        case waitingNewMessage2
+        case confirmNewMessage2(String)
+
         case waitingNewPassword
         case confirmNewPassword(String)
     }
 
     private var states: [Int64: ChatState] = [:]
-
     private var lastUpdateId: Int64 = 0
 
     init(token: String, settings: SettingsStore) {
@@ -51,10 +55,9 @@ final class TelegramBot {
     }
 
     func sendLog(_ text: String) async {
-        let logChats = await settings.allLogChats()
-        guard !logChats.isEmpty else { return }
-
-        for chatId in logChats {
+        let chats = await settings.allLogChats()
+        guard !chats.isEmpty else { return }
+        for chatId in chats {
             _ = try? await sendMessage(chatId: chatId, text: text, markup: nil)
         }
     }
@@ -68,15 +71,13 @@ final class TelegramBot {
             URLQueryItem(name: "timeout", value: "30"),
             URLQueryItem(name: "offset", value: String(lastUpdateId + 1))
         ]
-        let (data, _) = try await URLSession.shared.data(from: comps.url!)
 
+        let (data, _) = try await URLSession.shared.data(from: comps.url!)
         let resp = try JSONDecoder().decode(TGGetUpdatesResponse.self, from: data)
-        if resp.ok {
-            return resp.result ?? []
-        } else {
-            print("[TG] getUpdates error:", resp.description ?? "unknown")
-            return []
-        }
+
+        if resp.ok { return resp.result ?? [] }
+        print("[TG] getUpdates error:", resp.description ?? "unknown")
+        return []
     }
 
     @discardableResult
@@ -85,65 +86,21 @@ final class TelegramBot {
         text: String,
         markup: TGInlineKeyboardMarkup?
     ) async throws -> TGMessage {
+
         var req = URLRequest(url: baseURL.appendingPathComponent("sendMessage"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let payload = TGSendMessageRequest(
-            chat_id: chatId,
-            text: text,
-            reply_markup: markup
-        )
+        let payload = TGSendMessageRequest(chat_id: chatId, text: text, reply_markup: markup)
         req.httpBody = try JSONEncoder().encode(payload)
 
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try JSONDecoder().decode(TGSendMessageResponse.self, from: data)
 
-        if resp.ok, let msg = resp.result {
-            return msg
-        } else {
-            print("[TG] sendMessage error:", resp.description ?? "unknown")
-            throw TGSimpleError.sendFailed
-        }
-    }
+        if resp.ok, let msg = resp.result { return msg }
 
-    private func editMessageText(
-        chatId: Int64,
-        messageId: Int64,
-        text: String,
-        markup: TGInlineKeyboardMarkup?
-    ) async throws {
-        var req = URLRequest(url: baseURL.appendingPathComponent("editMessageText"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload = TGEditMessageTextRequest(
-            chat_id: chatId,
-            message_id: messageId,
-            text: text,
-            reply_markup: markup
-        )
-        req.httpBody = try JSONEncoder().encode(payload)
-
-        let (data, _) = try await URLSession.shared.data(for: req)
-        if let resp = try? JSONDecoder().decode(TGSendMessageResponse.self, from: data),
-           !resp.ok {
-            print("[TG] editMessageText error:", resp.description ?? "unknown")
-        }
-    }
-
-    private func deleteMessage(chatId: Int64, messageId: Int64) async {
-        var req = URLRequest(url: baseURL.appendingPathComponent("deleteMessage"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload: [String: Any] = [
-            "chat_id": chatId,
-            "message_id": messageId
-        ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: [])
-
-        _ = try? await URLSession.shared.data(for: req)
+        print("[TG] sendMessage error:", resp.description ?? "unknown")
+        throw TGSimpleError.sendFailed
     }
 
     private func sendEphemeralMessage(chatId: Int64, text: String) async {
@@ -153,14 +110,21 @@ final class TelegramBot {
         }
     }
 
+    private func deleteMessage(chatId: Int64, messageId: Int64) async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("deleteMessage"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload = ["chat_id": chatId, "message_id": messageId] as [String : Any]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: [])
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
     private func answerCallbackQuery(id: String) async {
         var req = URLRequest(url: baseURL.appendingPathComponent("answerCallbackQuery"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload: [String: Any] = ["callback_query_id": id]
+        let payload = ["callback_query_id": id]
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload, options: [])
-
         _ = try? await URLSession.shared.data(for: req)
     }
 
@@ -168,24 +132,19 @@ final class TelegramBot {
         if authorized {
             return """
             Доступные команды:
-            /settings — пользовательские настройки
+            /settings — настройки сообщений
             /develop_settings — developer-настройки
             /ping
             """
         } else {
-            return """
-            Доступные команды:
-            /start <пароль> — авторизация
-            """
+            return "/start <пароль> — авторизация"
         }
     }
 
     private func handle(update: TGUpdate) async {
         if let cb = update.callback_query {
             await handle(callback: cb)
-            return
-        }
-        if let msg = update.message {
+        } else if let msg = update.message {
             await handle(message: msg)
         }
     }
@@ -204,14 +163,9 @@ final class TelegramBot {
             return
         }
 
-        let isAuthorized = authorizedChats.contains(chatId)
-
-        guard isAuthorized else {
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: helpText(authorized: false),
-                markup: nil
-            )
+        let authorized = authorizedChats.contains(chatId)
+        guard authorized else {
+            _ = try? await sendMessage(chatId: chatId, text: helpText(authorized: false), markup: nil)
             return
         }
 
@@ -226,10 +180,17 @@ final class TelegramBot {
         }
 
         let state = states[chatId] ?? .idle
+
         switch state {
-        case .waitingNewMessage:
-            states[chatId] = .confirmNewMessage(text)
-            await showConfirmNewMessage(for: chatId, draft: text)
+
+        case .waitingNewMessage1:
+            states[chatId] = .confirmNewMessage1(text)
+            await showConfirmNewMessage1(for: chatId, draft: text)
+            return
+
+        case .waitingNewMessage2:
+            states[chatId] = .confirmNewMessage2(text)
+            await showConfirmNewMessage2(for: chatId, draft: text)
             return
 
         case .waitingNewPassword:
@@ -241,11 +202,7 @@ final class TelegramBot {
             break
         }
 
-        _ = try? await sendMessage(
-            chatId: chatId,
-            text: helpText(authorized: true),
-            markup: nil
-        )
+        _ = try? await sendMessage(chatId: chatId, text: helpText(authorized: true), markup: nil)
     }
 
     private func handle(callback: TGCallbackQuery) async {
@@ -253,70 +210,87 @@ final class TelegramBot {
             await answerCallbackQuery(id: callback.id)
             return
         }
-        let data = callback.data ?? ""
 
-        guard authorizedChats.contains(chatId) else {
+        let data = callback.data ?? ""
+        let isAuth = authorizedChats.contains(chatId)
+
+        guard isAuth else {
             await answerCallbackQuery(id: callback.id)
             return
         }
 
         switch data {
 
-        case "edit_msg":
-            states[chatId] = .waitingNewMessage
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: "Отправь новый текст стандартного сообщения одним сообщением.",
-                markup: nil
-            )
+        case "edit_msg1":
+            states[chatId] = .waitingNewMessage1
+            _ = try? await sendMessage(chatId: chatId,
+                                       text: "Отправь *стартовое сообщение* одним сообщением.",
+                                       markup: nil)
 
-        case "toggle_logs":
-            let enabledForThisChat = await settings.toggleLogs(forChat: chatId)
-            let text = enabledForThisChat
-                ? "Логи включены в этом чате."
-                : "Логи выключены в этом чате."
-            await sendEphemeralMessage(chatId: chatId, text: text)
-            await showDevelopSettings(for: chatId)
-
-        case "toggle_sending":
+        case "toggle_send1":
             let enabled = await settings.toggleSendMessages()
-            await sendEphemeralMessage(
-                chatId: chatId,
-                text: "Отправка сообщений: \(enabled ? "включена" : "выключена")"
-            )
+            await sendEphemeralMessage(chatId: chatId,
+                       text: "Стартовое сообщение: \(enabled ? "вкл" : "выкл")")
             await showSettings(for: chatId)
 
-        case "change_pass":
-            states[chatId] = .waitingNewPassword
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: "Отправь новый пароль одним сообщением.",
-                markup: nil
-            )
-
-        case "confirm_new_msg":
-            if case let .confirmNewMessage(draft) = states[chatId] {
+        case "confirm_new_msg1":
+            if case let .confirmNewMessage1(draft) = states[chatId] {
                 await settings.setMessageTemplate(draft)
                 states[chatId] = .idle
-                await sendEphemeralMessage(chatId: chatId, text: "Стандартное сообщение обновлено.")
+                await sendEphemeralMessage(chatId: chatId, text: "Стартовое сообщение обновлено.")
                 await showSettings(for: chatId)
             }
 
-        case "cancel_new_msg":
+        case "cancel_new_msg1":
             states[chatId] = .idle
-            await sendEphemeralMessage(chatId: chatId, text: "Изменение сообщения отменено.")
+            await sendEphemeralMessage(chatId: chatId, text: "Отменено.")
+
+        case "edit_msg2":
+            states[chatId] = .waitingNewMessage2
+            _ = try? await sendMessage(chatId: chatId,
+                                       text: "Отправь *второе сообщение* одним сообщением.",
+                                       markup: nil)
+        case "toggle_send2":
+            let enabled = await settings.toggleSendSecondMessage()
+            await sendEphemeralMessage(chatId: chatId,
+                                      text: "Второе сообщение: \(enabled ? "вкл" : "выкл")")
+            await showSettings(for: chatId)
+
+        case "confirm_new_msg2":
+            if case let .confirmNewMessage2(draft) = states[chatId] {
+                await settings.setSecondMessageTemplate(draft)
+                states[chatId] = .idle
+                await sendEphemeralMessage(chatId: chatId, text: "Второе сообщение обновлено.")
+                await showSettings(for: chatId)
+            }
+
+        case "cancel_new_msg2":
+            states[chatId] = .idle
+            await sendEphemeralMessage(chatId: chatId, text: "Отменено.")
+
+        case "change_pass":
+            states[chatId] = .waitingNewPassword
+            _ = try? await sendMessage(chatId: chatId,
+                                       text: "Отправь новый пароль одним сообщением.",
+                                       markup: nil)
 
         case "confirm_new_pass":
-            if case let .confirmNewPassword(draft) = states[chatId] {
-                await settings.setPassword(draft)
+            if case let .confirmNewPassword(pass) = states[chatId] {
+                await settings.setPassword(pass)
                 states[chatId] = .idle
-                await sendEphemeralMessage(chatId: chatId, text: "Пароль обновлён.")
+                await sendEphemeralMessage(chatId: chatId, text: "Пароль изменён.")
                 await showDevelopSettings(for: chatId)
             }
 
         case "cancel_new_pass":
             states[chatId] = .idle
-            await sendEphemeralMessage(chatId: chatId, text: "Изменение пароля отменено.")
+            await sendEphemeralMessage(chatId: chatId, text: "Отменено.")
+
+        case "toggle_logs":
+            let enabled = await settings.toggleLogs(forChat: chatId)
+            await sendEphemeralMessage(chatId: chatId,
+                                       text: enabled ? "Логи включены" : "Логи выключены")
+            await showDevelopSettings(for: chatId)
 
         default:
             break
@@ -326,55 +300,53 @@ final class TelegramBot {
     }
 
     private func handleStart(text: String, chatId: Int64) async {
-        let components = text.split(separator: " ")
-        guard components.count == 2 else {
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: "Используй: /start <пароль>",
-                markup: nil
-            )
+        let comps = text.split(separator: " ")
+        guard comps.count == 2 else {
+            _ = try? await sendMessage(chatId: chatId, text: "Используй: /start <пароль>", markup: nil)
             return
         }
 
-        let pass = String(components[1])
+        let pass = String(comps[1])
         let s = await settings.snapshot()
 
         if pass == s.password {
             authorizedChats.insert(chatId)
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: "Авторизация успешна. Используй /settings и /develop_settings для управления.",
-                markup: nil
-            )
+            _ = try? await sendMessage(chatId: chatId,
+                                       text: "Авторизация успешна. Используй /settings.",
+                                       markup: nil)
         } else {
-            _ = try? await sendMessage(
-                chatId: chatId,
-                text: "Неверный пароль.",
-                markup: nil
-            )
+            _ = try? await sendMessage(chatId: chatId, text: "Неверный пароль.", markup: nil)
         }
     }
 
     private func showSettings(for chatId: Int64) async {
         let s = await settings.snapshot()
 
+        func preview(_ t: String) -> String {
+            if t.count <= 60 { return t }
+            return String(t.prefix(60)) + "..."
+        }
+
         let text = """
-        Текущие настройки:
+        Настройки сообщений:
 
-        • Стандартное сообщение:
-        \(s.messageTemplate)
+        • Стартовое сообщение — \(s.sendMessages ? "включено ✅" : "выключено ❌")
+        \(preview(s.messageTemplate))
 
-        • Отправка сообщений: \(s.sendMessages ? "включена" : "выключена")
+        • Второе сообщение — \(s.sendSecondMessage ? "включено ✅" : "выключено ❌")
+        \(preview(s.secondMessageTemplate))
         """
-
-        let sendingButtonTitle = s.sendMessages ? "Выключить отправку" : "Включить отправку"
 
         let markup = TGInlineKeyboardMarkup(inline_keyboard: [
             [
-                TGInlineKeyboardButton(text: "Изменить стандартное сообщение", callback_data: "edit_msg")
+                TGInlineKeyboardButton(text: "Изменить стартовое", callback_data: "edit_msg1"),
+                TGInlineKeyboardButton(text: s.sendMessages ? "Старт: выключить" : "Старт: включить",
+                                       callback_data: "toggle_send1")
             ],
             [
-                TGInlineKeyboardButton(text: sendingButtonTitle, callback_data: "toggle_sending")
+                TGInlineKeyboardButton(text: "Изменить второе", callback_data: "edit_msg2"),
+                TGInlineKeyboardButton(text: s.sendSecondMessage ? "Второе: выключить" : "Второе: включить",
+                                       callback_data: "toggle_send2")
             ]
         ])
 
@@ -385,7 +357,7 @@ final class TelegramBot {
         let s = await settings.snapshot()
         let logChats = s.logChatIds ?? []
 
-        var lines: [String] = []
+        var lines = [String]()
         lines.append("Developer settings:")
         lines.append("")
         lines.append("• Пароль: ********")
@@ -400,56 +372,61 @@ final class TelegramBot {
 
         let text = lines.joined(separator: "\n")
 
-        let enabledForThisChat = logChats.contains(chatId)
-        let logsTitle = enabledForThisChat
-            ? "Выключить логи в этом чате"
-            : "Включить логи в этом чате"
-
         let markup = TGInlineKeyboardMarkup(inline_keyboard: [
             [
                 TGInlineKeyboardButton(text: "Изменить пароль", callback_data: "change_pass")
             ],
             [
-                TGInlineKeyboardButton(text: logsTitle, callback_data: "toggle_logs")
+                TGInlineKeyboardButton(text: logChats.contains(chatId) ? "Выключить логи" : "Включить логи",
+                                       callback_data: "toggle_logs")
             ]
         ])
 
         _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
     }
 
-    private func showConfirmNewMessage(for chatId: Int64, draft: String) async {
+    private func showConfirmNewMessage1(for chatId: Int64, draft: String) async {
         let text = """
-        Новый текст стандартного сообщения:
+        Новый текст *стартового* сообщения:
 
         \(draft)
 
-        Подтвердить изменения?
+        Подтвердить?
         """
+        let markup = TGInlineKeyboardMarkup(inline_keyboard: [[
+            TGInlineKeyboardButton(text: "✅", callback_data: "confirm_new_msg1"),
+            TGInlineKeyboardButton(text: "❌", callback_data: "cancel_new_msg1")
+        ]])
+        _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
+    }
 
-        let markup = TGInlineKeyboardMarkup(inline_keyboard: [
-            [
-                TGInlineKeyboardButton(text: "✅ Подтвердить", callback_data: "confirm_new_msg"),
-                TGInlineKeyboardButton(text: "❌ Отмена", callback_data: "cancel_new_msg")
-            ]
-        ])
+    private func showConfirmNewMessage2(for chatId: Int64, draft: String) async {
+        let text = """
+        Новый текст *второго* сообщения:
 
+        \(draft)
+
+        Подтвердить?
+        """
+        let markup = TGInlineKeyboardMarkup(inline_keyboard: [[
+            TGInlineKeyboardButton(text: "✅", callback_data: "confirm_new_msg2"),
+            TGInlineKeyboardButton(text: "❌", callback_data: "cancel_new_msg2")
+        ]])
         _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
     }
 
     private func showConfirmNewPassword(for chatId: Int64, draft: String) async {
         let text = """
-        Новый пароль: \(draft)
+        Новый пароль:
 
-        Подтвердить изменения?
+        \(draft)
+
+        Подтвердить?
         """
-
-        let markup = TGInlineKeyboardMarkup(inline_keyboard: [
-            [
-                TGInlineKeyboardButton(text: "✅ Подтвердить", callback_data: "confirm_new_pass"),
-                TGInlineKeyboardButton(text: "❌ Отмена", callback_data: "cancel_new_pass")
-            ]
-        ])
-
+        let markup = TGInlineKeyboardMarkup(inline_keyboard: [[
+            TGInlineKeyboardButton(text: "✅", callback_data: "confirm_new_pass"),
+            TGInlineKeyboardButton(text: "❌", callback_data: "cancel_new_pass")
+        ]])
         _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
     }
 }
