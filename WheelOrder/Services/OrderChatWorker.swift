@@ -11,6 +11,7 @@ final class OrderChatWorker {
     private let api: OzonSellerAPI
     private let cache: PostingCache
     private let secondCache: SecondMessageCache
+    private let chatCache: ChatCache
 
     private let windowHours: Int
     private let loopIntervalSec: UInt64
@@ -27,6 +28,7 @@ final class OrderChatWorker {
         self.api = api
         self.cache = cache
         self.secondCache = SecondMessageCache.shared
+        self.chatCache = ChatCache.shared
         self.windowHours = windowHours
         self.loopIntervalSec = loopIntervalSec
         self.settings = settings
@@ -65,6 +67,7 @@ private extension OrderChatWorker {
     func pruneCache() {
         cache.pruneOlderThan(hours: 24)
         secondCache.pruneOlderThan(hours: 24)
+        chatCache.pruneOlderThan(hours: 24 * 7)
     }
 
     func timeWindow(hours: Int) -> (from: Date, to: Date) {
@@ -112,6 +115,12 @@ private extension OrderChatWorker {
             return
         }
 
+        if chatCache.contains(chatId) {
+            log("  \(postingNumber): chat \(chatId) already processed recently, skipping duplicate messages")
+            cache.insert(postingNumber)
+            return
+        }
+
         do {
             let text = Config.makePostingMessage(
                 postingNumber: postingNumber,
@@ -121,6 +130,7 @@ private extension OrderChatWorker {
             log("  \(postingNumber): sent initial message to chat \(chatId)")
 
             cache.insert(postingNumber)
+            chatCache.insert(chatId)
             secondCache.insert(postingNumber)
 
         } catch {
