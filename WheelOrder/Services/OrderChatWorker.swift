@@ -129,6 +129,8 @@ private extension OrderChatWorker {
             try await api.sendMessage(chatId: chatId, text: text)
             log("  \(postingNumber): sent initial message to chat \(chatId)")
 
+            await sendDiskQuantityMessageIfNeeded(postingNumber: postingNumber, chatId: chatId)
+
             cache.insert(postingNumber)
             chatCache.insert(chatId)
             secondCache.insert(postingNumber)
@@ -179,5 +181,49 @@ private extension OrderChatWorker {
     func log(_ message: String) {
         let line = "[\(Date())] \(message)"
         print(line)
+    }
+    
+    func sendDiskQuantityMessageIfNeeded(postingNumber: String, chatId: String) async {
+        do {
+            let posting = try await api.getPostingFbs(postingNumber: postingNumber)
+            let products = posting.products ?? []
+
+            let diskProducts = products.filter { p in
+                guard let name = p.name else { return false }
+                return isDiskProductName(name)
+            }
+
+            guard !diskProducts.isEmpty else { return }
+
+            let totalQty = diskProducts.reduce(0) { acc, p in acc + (p.quantity ?? 0) }
+
+            guard totalQty > 0 else { return }
+
+            guard totalQty != 4 else { return }
+
+            let msg = "У Вас в заказе \(totalQty) \(diskWord(for: totalQty)), верно?"
+            try await api.sendMessage(chatId: chatId, text: msg)
+            log("  \(postingNumber): sent disk-quantity message to chat \(chatId)\nmsg: \(msg)")
+
+        } catch {
+            log("  \(postingNumber): failed to send disk-quantity message (\(error))")
+        }
+    }
+
+    func isDiskProductName(_ raw: String) -> Bool {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return s.hasPrefix("диск")
+    }
+
+    func diskWord(for n: Int) -> String {
+        let nAbs = abs(n)
+        let mod100 = nAbs % 100
+        if mod100 >= 11 && mod100 <= 14 { return "дисков" }
+
+        switch nAbs % 10 {
+        case 1: return "диск"
+        case 2, 3, 4: return "диска"
+        default: return "дисков"
+        }
     }
 }

@@ -71,4 +71,17 @@ final class OzonSellerAPI {
         }
         return acc
     }
+    
+    func getPostingFbs(postingNumber: String) async throws -> FBSPostingFull {
+        let res: FBSGetResponse = try await http.post(
+            "/v3/posting/fbs/get",
+            body: FBSGetRequest(posting_number: postingNumber),
+            as: FBSGetResponse.self
+        )
+        guard let result = res.result else {
+            throw NSError(domain: "OZON", code: -3,
+                          userInfo: [NSLocalizedDescriptionKey: "result not found in /v3/posting/fbs/get"])
+        }
+        return result
+    }
 }

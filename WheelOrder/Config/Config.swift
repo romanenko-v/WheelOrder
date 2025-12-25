@@ -9,7 +9,7 @@ import Foundation
 
 enum Config {
     static var OZON_CLIENT_ID: String = ProcessInfo.processInfo.environment["OZON_CLIENT_ID"] ?? ""
-    static var OZON_API_KEY:   String = ProcessInfo.processInfo.environment["OZON_API_KEY"] ?? ""
+    static var OZON_API_KEY: String = ProcessInfo.processInfo.environment["OZON_API_KEY"] ?? ""
     static var TELEGRAM_BOT_TOKEN: String = ProcessInfo.processInfo.environment["TELEGRAM_BOT_TOKEN"] ?? ""
 
     static let MESSAGE_TEXT = """

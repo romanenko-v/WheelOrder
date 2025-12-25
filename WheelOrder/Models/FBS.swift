@@ -37,3 +37,21 @@ struct FBSPosting: Decodable {
     let in_process_at: String?
     let shipment_date: String?
 }
+
+struct FBSGetRequest: Encodable {
+    let posting_number: String
+}
+
+struct FBSGetResponse: Decodable {
+    let result: FBSPostingFull?
+}
+
+struct FBSPostingFull: Decodable {
+    let posting_number: String?
+    let products: [FBSPostingProduct]?
+}
+
+struct FBSPostingProduct: Decodable {
+    let name: String?
+    let quantity: Int?
+}
