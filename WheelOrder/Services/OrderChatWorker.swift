@@ -129,7 +129,7 @@ private extension OrderChatWorker {
             try await api.sendMessage(chatId: chatId, text: text)
             log("  \(postingNumber): sent initial message to chat \(chatId)")
 
-            await sendDiskQuantityMessageIfNeeded(postingNumber: postingNumber, chatId: chatId)
+//            await sendDiskQuantityMessageIfNeeded(postingNumber: postingNumber, chatId: chatId)
 
             cache.insert(postingNumber)
             chatCache.insert(chatId)
