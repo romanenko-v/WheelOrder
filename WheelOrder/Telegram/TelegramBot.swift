@@ -26,6 +26,9 @@ final class TelegramBot {
         case waitingNewMessage2
         case confirmNewMessage2(String)
 
+        case waitingSecondMessageDelayHours
+        case confirmSecondMessageDelayHours(Int)
+
         case waitingNewPassword
         case confirmNewPassword(String)
     }
@@ -198,6 +201,20 @@ final class TelegramBot {
             await showConfirmNewPassword(for: chatId, draft: text)
             return
 
+        case .waitingSecondMessageDelayHours:
+            guard let hours = parseSecondMessageDelayHours(text) else {
+                _ = try? await sendMessage(
+                    chatId: chatId,
+                    text: "Отправь число часов от \(SettingsStore.minSecondMessageDelayHours) до \(SettingsStore.maxSecondMessageDelayHours).",
+                    markup: nil
+                )
+                return
+            }
+
+            states[chatId] = .confirmSecondMessageDelayHours(hours)
+            await showConfirmSecondMessageDelayHours(for: chatId, hours: hours)
+            return
+
         default:
             break
         }
@@ -268,6 +285,27 @@ final class TelegramBot {
             states[chatId] = .idle
             await sendEphemeralMessage(chatId: chatId, text: "Отменено.")
 
+        case "edit_delay2":
+            let s = await settings.snapshot()
+            states[chatId] = .waitingSecondMessageDelayHours
+            _ = try? await sendMessage(
+                chatId: chatId,
+                text: "Отправь через сколько часов после первого сообщения отправлять второе. Сейчас: \(s.secondMessageDelayHours) ч.",
+                markup: nil
+            )
+
+        case "confirm_delay2":
+            if case let .confirmSecondMessageDelayHours(hours) = states[chatId] {
+                await settings.setSecondMessageDelayHours(hours)
+                states[chatId] = .idle
+                await sendEphemeralMessage(chatId: chatId, text: "Задержка второго сообщения обновлена: \(hours) ч.")
+                await showSettings(for: chatId)
+            }
+
+        case "cancel_delay2":
+            states[chatId] = .idle
+            await sendEphemeralMessage(chatId: chatId, text: "Отменено.")
+
         case "change_pass":
             states[chatId] = .waitingNewPassword
             _ = try? await sendMessage(chatId: chatId,
@@ -334,6 +372,7 @@ final class TelegramBot {
         \(s.messageTemplate)
 
         • Второе сообщение — \(s.sendSecondMessage ? "включено ✅" : "выключено ❌")
+        Через \(s.secondMessageDelayHours) ч.
         \(s.secondMessageTemplate)
         """
 
@@ -347,6 +386,10 @@ final class TelegramBot {
                 TGInlineKeyboardButton(text: "Изменить второе", callback_data: "edit_msg2"),
                 TGInlineKeyboardButton(text: s.sendSecondMessage ? "Второе: выключить" : "Второе: включить",
                                        callback_data: "toggle_send2")
+            ],
+            [
+                TGInlineKeyboardButton(text: "Задержка: \(s.secondMessageDelayHours) ч.",
+                                       callback_data: "edit_delay2")
             ]
         ])
 
@@ -428,5 +471,28 @@ final class TelegramBot {
             TGInlineKeyboardButton(text: "❌", callback_data: "cancel_new_pass")
         ]])
         _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
+    }
+
+    private func showConfirmSecondMessageDelayHours(for chatId: Int64, hours: Int) async {
+        let text = """
+        Второе сообщение будет отправляться через \(hours) ч.
+
+        Подтвердить?
+        """
+        let markup = TGInlineKeyboardMarkup(inline_keyboard: [[
+            TGInlineKeyboardButton(text: "✅", callback_data: "confirm_delay2"),
+            TGInlineKeyboardButton(text: "❌", callback_data: "cancel_delay2")
+        ]])
+        _ = try? await sendMessage(chatId: chatId, text: text, markup: markup)
+    }
+
+    private func parseSecondMessageDelayHours(_ text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let hours = Int(trimmed) else { return nil }
+        guard hours >= SettingsStore.minSecondMessageDelayHours,
+              hours <= SettingsStore.maxSecondMessageDelayHours else {
+            return nil
+        }
+        return hours
     }
 }

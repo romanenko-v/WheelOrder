@@ -8,6 +8,9 @@
 import Foundation
 
 actor SettingsStore {
+    static let defaultSecondMessageDelayHours = 18
+    static let minSecondMessageDelayHours = 1
+    static let maxSecondMessageDelayHours = 720
 
     struct DataModel: Codable {
         var password: String
@@ -15,7 +18,39 @@ actor SettingsStore {
         var secondMessageTemplate: String
         var sendMessages: Bool
         var sendSecondMessage: Bool
+        var secondMessageDelayHours: Int
         var logChatIds: [Int64]?
+
+        init(
+            password: String,
+            messageTemplate: String,
+            secondMessageTemplate: String,
+            sendMessages: Bool,
+            sendSecondMessage: Bool,
+            secondMessageDelayHours: Int = SettingsStore.defaultSecondMessageDelayHours,
+            logChatIds: [Int64]?
+        ) {
+            self.password = password
+            self.messageTemplate = messageTemplate
+            self.secondMessageTemplate = secondMessageTemplate
+            self.sendMessages = sendMessages
+            self.sendSecondMessage = sendSecondMessage
+            self.secondMessageDelayHours = SettingsStore.normalizedSecondMessageDelayHours(secondMessageDelayHours)
+            self.logChatIds = logChatIds
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.password = try container.decode(String.self, forKey: .password)
+            self.messageTemplate = try container.decode(String.self, forKey: .messageTemplate)
+            self.secondMessageTemplate = try container.decode(String.self, forKey: .secondMessageTemplate)
+            self.sendMessages = try container.decode(Bool.self, forKey: .sendMessages)
+            self.sendSecondMessage = try container.decode(Bool.self, forKey: .sendSecondMessage)
+            let delayHours = try container.decodeIfPresent(Int.self, forKey: .secondMessageDelayHours)
+                ?? SettingsStore.defaultSecondMessageDelayHours
+            self.secondMessageDelayHours = SettingsStore.normalizedSecondMessageDelayHours(delayHours)
+            self.logChatIds = try container.decodeIfPresent([Int64].self, forKey: .logChatIds) ?? []
+        }
     }
 
     static let shared = SettingsStore()
@@ -32,8 +67,9 @@ actor SettingsStore {
             var decoded = try? JSONDecoder().decode(DataModel.self, from: raw)
         {
             if decoded.logChatIds == nil { decoded.logChatIds = [] }
+            decoded.secondMessageDelayHours = Self.normalizedSecondMessageDelayHours(decoded.secondMessageDelayHours)
             self.data = decoded
-            saveSync()
+            Self.saveSync(data: self.data, to: self.url)
         } else {
             self.data = DataModel(
                 password: "123321",
@@ -41,16 +77,21 @@ actor SettingsStore {
                 secondMessageTemplate: "Второе сообщение по умолчанию.",
                 sendMessages: true,
                 sendSecondMessage: false,
+                secondMessageDelayHours: Self.defaultSecondMessageDelayHours,
                 logChatIds: []
             )
-            saveSync()
+            Self.saveSync(data: self.data, to: self.url)
+        }
+    }
+
+    private static func saveSync(data: DataModel, to url: URL) {
+        if let encoded = try? JSONEncoder().encode(data) {
+            try? encoded.write(to: url)
         }
     }
 
     private func saveSync() {
-        if let encoded = try? JSONEncoder().encode(data) {
-            try? encoded.write(to: url)
-        }
+        Self.saveSync(data: data, to: url)
     }
 
     private func save() { saveSync() }
@@ -69,6 +110,11 @@ actor SettingsStore {
 
     func setSecondMessageTemplate(_ text: String) {
         data.secondMessageTemplate = text
+        save()
+    }
+
+    func setSecondMessageDelayHours(_ hours: Int) {
+        data.secondMessageDelayHours = Self.normalizedSecondMessageDelayHours(hours)
         save()
     }
 
@@ -98,5 +144,9 @@ actor SettingsStore {
 
     func allLogChats() -> [Int64] {
         Array(Set(data.logChatIds ?? []))
+    }
+
+    private static func normalizedSecondMessageDelayHours(_ hours: Int) -> Int {
+        min(max(hours, minSecondMessageDelayHours), maxSecondMessageDelayHours)
     }
 }

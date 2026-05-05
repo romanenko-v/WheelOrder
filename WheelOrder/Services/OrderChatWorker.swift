@@ -18,8 +18,6 @@ final class OrderChatWorker {
     private let settings: SettingsStore
     private let throttleNs: UInt64 = 200_000_000
 
-    private let secondMessageDelayHours: Int = 12
-
     init(api: OzonSellerAPI,
          cache: PostingCache,
          windowHours: Int = 5,
@@ -42,8 +40,9 @@ final class OrderChatWorker {
     }
 
     func runOnce() async {
-        pruneCache()
-        await processSecondMessagesQueue()
+        let cfg = await settings.snapshot()
+        await processSecondMessagesQueue(cfg: cfg)
+        pruneCache(secondMessageDelayHours: cfg.secondMessageDelayHours)
         let (from, to) = timeWindow(hours: windowHours)
         do {
             let postings = try await fetchNewPostings(from: from, to: to)
@@ -64,9 +63,9 @@ final class OrderChatWorker {
 }
 
 private extension OrderChatWorker {
-    func pruneCache() {
+    func pruneCache(secondMessageDelayHours: Int) {
         cache.pruneOlderThan(hours: 24)
-        secondCache.pruneOlderThan(hours: 24)
+        secondCache.pruneOlderThan(hours: max(24, secondMessageDelayHours + 24))
         chatCache.pruneOlderThan(hours: 24 * 7)
     }
 
@@ -145,16 +144,15 @@ private extension OrderChatWorker {
         cache.insert(postingNumber)
     }
 
-    func processSecondMessagesQueue() async {
-        let cfg = await settings.snapshot()
+    func processSecondMessagesQueue(cfg: SettingsStore.DataModel) async {
         let now = Date()
-
-        let threshold = now.addingTimeInterval(-TimeInterval(secondMessageDelayHours * 3600))
+        let delayHours = cfg.secondMessageDelayHours
+        let threshold = now.addingTimeInterval(-TimeInterval(delayHours * 3600))
 
         let duePostings = secondCache.postings(olderThanOrEqualTo: threshold)
         guard !duePostings.isEmpty else { return }
 
-        log("Processing \(duePostings.count) postings for second message")
+        log("Processing \(duePostings.count) postings for second message after \(delayHours)h delay")
         for pn in duePostings {
             if !cfg.sendSecondMessage {
                 log("  \(pn): second message skipped (disabled in config)")

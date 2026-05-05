@@ -19,7 +19,19 @@ DerivedData/
 
 # build products
 build/
+.build/
 *.[oa]
+
+# Swift Package Manager
+.swiftpm/
+
+# Local environment / runtime state
+.env
+.env.*
+bot_settings.json
+processed_postings.json
+processed_chats.json
+second_messages.json
 
 # repositories
 .hg
